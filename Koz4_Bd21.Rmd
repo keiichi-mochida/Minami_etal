@@ -1,0 +1,306 @@
+---
+title: "Bd21-3_x_Bd21"
+author: "Keiichi_Mochida, Yoshihiko Onda, Minami Anzu"
+date: "2025-02-12 updated"
+output: html_document
+---
+
+https://www.bioconductor.org/packages/release/bioc/html/rqt.html
+To cite R/qtl in publications, use
+Broman KW, Wu H, Sen S, Churchill GA (2003) R/qtl: QTL mapping in experimental crosses. Bioinformatics, 19: 889-890
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("rqt")
+```
+
+data loading
+```{r}
+options(digits=4)
+library(qtl)
+
+mapthis_F2_ <- read.cross("csvr", dir="./Koz4_Bd21", file="Koz_1st_r.csv", estimate.map=FALSE)
+summary(mapthis_F2_)
+```
+individual 175, 175*0.9=157.5
+markers 442, 442*0.9=397.8
+
+
+Estimation of recombination fractions
+```{r}
+mapthis_F2_ <- est.rf(mapthis_F2_)
+plotRF(mapthis_F2_, alternate.chrid=TRUE)
+```
+likagemap construction
+   check missing data in a dataset (#0: raw)
+```{r}
+par(mfrow=c(1,1), las=1)
+plotMissing(mapthis_F2_, main="missing genotype data")
+
+#check missing data
+par(mfrow=c(1,2), las=1)
+plot(ntyped(mapthis_F2_, what="ind"), ylab="No. typed markers",
+main="No. genotypes by individual (#0)", ylim=c(0,500))
+plot(ntyped(mapthis_F2_, what="mar"), ylab="No. typed individuals",
+main="No. genotypes by marker (#0)", ylim=c(0,200))
+```
+  Remove missing data
+    Retain only individuals genotyped for more than 90% of all markers -> #1
+    Exclude markers genotyped less than 90% of all individuals ->#2
+```{r}
+mapthis_F2_1 <- subset(mapthis_F2_, ind=(ntyped(mapthis_F2_)>397.8)) #397.8 >90% of all markers
+
+nt.bymar <- ntyped(mapthis_F2_1, "mar")
+todrop1 <- names(nt.bymar[nt.bymar < 157.5]) #Names of markers < 157.5 genotyped individuals.
+mapthis_F2_2 <- drop.markers(mapthis_F2_1, todrop1)
+
+par(mfrow=c(3,2), las=1)
+
+plot(ntyped(mapthis_F2_, what="ind"), ylab="No. typed markers"
+, main="No. genotypes by individual (#0)", ylim=c(0,500))
+plot(ntyped(mapthis_F2_, what="mar"), ylab="No. typed individuals"
+, main="No. genotypes by marker (#0)", ylim=c(0,200))
+
+plot(ntyped(mapthis_F2_1, what="ind"), ylab="No. typed markers"
+, main="No. genotypes by individual (#1)", ylim=c(0,500))
+plot(ntyped(mapthis_F2_1, what="mar"), ylab="No. typed individuals"
+, main="No. genotypes by marker (#1)", ylim=c(0,200))
+
+plot(ntyped(mapthis_F2_2, what="ind"), ylab="No. typed markers"
+, main="No. genotypes by individual (#2)", ylim=c(0,500))
+plot(ntyped(mapthis_F2_2, what="mar"), ylab="No. typed individuals"
+, main="No. genotypes by marker (#2)", ylim=c(0,200))
+```
+```{r}
+summary(mapthis_F2_)
+summary(mapthis_F2_1)
+summary(mapthis_F2_2)
+```
+
+Visualization of the missing data and recombination fraction  
+```{r}
+par(mfrow=c(1,1), las=1)
+plotMissing(mapthis_F2_2, main="missing genotype data (#2)")
+
+par(mfrow=c(3,1), las=1)
+mapthis_F2_ <- est.rf(mapthis_F2_)
+mapthis_F2_1 <- est.rf(mapthis_F2_1)
+mapthis_F2_2 <- est.rf(mapthis_F2_2)
+plotRF(mapthis_F2_2, alternate.chrid=TRUE, main="F2_2 (#2)")
+
+```
+Check segregation pattern -> #3, #4
+```{r}
+mapthis_F2_3 <- mapthis_F2_2
+gt <- geno.table(mapthis_F2_3)
+gt[gt$P.value < 0.05/totmar(mapthis_F2_3),]
+todrop3 <- rownames(gt[gt$P.value < 1e-7,])
+mapthis_F2_4 <- drop.markers(mapthis_F2_3, todrop3)
+summary(mapthis_F2_4)
+
+par(mfrow=c(1,1), las=1)
+plotRF(mapthis_F2_4, alternate.chrid=TRUE)
+
+```
+Assess genotype frequencies for each individuals
+```{r}
+g <- pull.geno(mapthis_F2_4)
+gfreq <- apply(g, 1, function(a) table(factor(a, levels=1:3)))
+gfreq <- t(t(gfreq) / colSums(gfreq))
+par(mfrow=c(1,3), las=1)
+for(i in 1:3)
+plot(gfreq[i,], ylab="Genotype frequency", main=c("AA", "AB", "BB")[i], ylim=c(0,1))
+```
+Estimation of genetic map based on the filtered markers #4 -> #5
+```{r}
+#mapthis_F2_5 <- est.map(mapthis_F2_4)
+mapthis_F2_5 <- est.map(mapthis_F2_4, n.cluster=7) 
+par(mfrow=c(1,1), las=1)
+plot.map(mapthis_F2_5)
+summary(mapthis_F2_5)
+```
+
+Updating and visualizing the final genetic Map #5-> #6 (Final)
+```{r}
+mapthis_F2_6 <- replace.map(mapthis_F2_4, mapthis_F2_5)
+plot.map(mapthis_F2_6)
+summary(mapthis_F2_6)
+
+saveRDS(mapthis_F2_5, file="Koz4_Bd21_mapthis_F2_5.rds")
+saveRDS(mapthis_F2_6, file="Koz4-3_Bd21_mapthis_F2_6.rds")
+
+```
+Extracting recombination frequencies and LOD Scores from the genetic map
+```{r}
+rf6 <- pull.rf(mapthis_F2_6)
+lod6 <- pull.rf(mapthis_F2_6, what="lod")
+mn1 <- markernames(mapthis_F2_6, chr=1)
+mn2 <- markernames(mapthis_F2_6, chr=2)
+mn3 <- markernames(mapthis_F2_6, chr=3)
+mn4 <- markernames(mapthis_F2_6, chr=4)
+mn5 <- markernames(mapthis_F2_6, chr=5)
+```
+
+```{r}
+pull.map(mapthis_F2_6, chr=5)
+pull.map(mapthis_F2_6, chr=4)
+pull.map(mapthis_F2_6, chr=3)
+pull.map(mapthis_F2_6, chr=2)
+pull.map(mapthis_F2_6, chr=1)
+summaryMap(mapthis_F2_6)
+
+plotMap(mapthis_F2_6, show.marker.names=FALSE)
+plotRF(mapthis_F2_6)
+```
+Further marker check
+```{r}
+dropone <- droponemarker(mapthis_F2_6, error.prob=0.005)
+par(mfrow=c(2,1))
+plot(dropone, lod=1, ylim=c(-100,0))
+plot(dropone, lod=2, ylab="Change in chromosome length")
+summary(dropone, lod.column=2)
+
+badmar <- rownames(summary(dropone, lod.column=2))[1:3]
+mapthis_F2_7 <- drop.markers(mapthis_F2_6, badmar)
+
+newmap1 <- est.map(mapthis_F2_7, error.prob=0.005, n.cluster=7)
+mapthis_F2_8 <- replace.map(mapthis_F2_7, newmap1)
+
+summaryMap(mapthis_F2_8) #shorter than mapthis_F2_6 
+```
+```{r}
+saveRDS(mapthis_F2_5, file="Koz4_Bd21_mapthis_F2_7.rds")
+saveRDS(mapthis_F2_6, file="Koz4-3_Bd21_mapthis_F2_8.rds")
+```
+
+
+```{r}
+par(mfrow=c(1,1), las=1)
+plot(countXO(mapthis_F2_8), ylab="Number of crossovers")
+mapthis_F2_9 <- subset(mapthis_F2_8, ind=(countXO(mapthis_F2_8) < 50))
+newmap2 <- est.map(mapthis_F2_9, error.prob=0.005, n.cluster=7)
+mapthis_F2_10 <- replace.map(mapthis_F2_9, newmap2)
+summaryMap(mapthis_F2_10)
+
+par(mfrow=c(2,1))
+plot(countXO(mapthis_F2_8), ylab="Number of crossovers", main = "mapthis_F2_8", ylim=c(0,80))
+plot(countXO(mapthis_F2_10), ylab="Number of crossovers", main = "mapthis_F2_10", ylim=c(0,80))
+
+saveRDS(mapthis_F2_5, file="Koz4_Bd21_mapthis_F2_9.rds")
+saveRDS(mapthis_F2_6, file="Koz4_Bd21_mapthis_F2_10.rds")
+
+```
+check segregation distortion
+```{r}
+gt <- geno.table(mapthis_F2_10, scanone.output=TRUE)
+par(mfrow=c(2,1))
+plot(gt, ylab=expression(paste(-log[10], " P-value")))
+plot(gt, lod=3:5, ylab="Genotype frequency")
+abline(h=c(0.25, 0.5), lty=2, col="gray")
+
+mapthis_F2_10 <- est.rf(mapthis_F2_10)
+par(mfrow=c(1,1))
+plotRF(mapthis_F2_10, alternate.chrid=TRUE, main="F2_10")
+
+summary(mapthis_F2_10)
+
+pull.map(mapthis_F2_10, chr=1)
+pull.map(mapthis_F2_10, chr=2)
+pull.map(mapthis_F2_10, chr=3)
+pull.map(mapthis_F2_10, chr=4)
+pull.map(mapthis_F2_10, chr=5)
+
+par(mfrow=c(1,1))
+#plotMap(mapthis_F2_10, show.marker.names=TRUE)
+plotMap(mapthis_F2_10, show.marker.names=FALSE)
+
+```
+QTL napping
+```{r}
+qtl1 <- mapthis_F2_10
+qtl1
+geno.image(qtl1)
+
+# imputation of missing value
+fill <- fill.geno(qtl1)
+geno.image(fill)
+
+#autocofactor
+autocofactors <- mqmautocofactors(fill, 100)
+mqmplot.cofactors(fill, autocofactors, justdots=TRUE)
+
+#entire scan
+mqm_auto <- mqmscan(fill, autocofactors, pheno.col=c(1:3),　verbose = TRUE,　n.cluster=7)
+#output
+write.csv(mqm_auto,  file = "Koz4-3_Bd21_mqm_auto.csv")
+
+#entire scan2
+mqm_all <- mqmscanall(fill, cofactors = autocofactors, n.cluster=7)
+#image output
+pdf(file="Koz4_Bd21.mqmscanall(red=FW, green=nleaf blue=water).pdf")
+mqmplot.multitrait(mqm_all, type="lines")
+dev.off()
+#image output
+pdf(file="Koz4_Bd21.mqmscanall_chr=4(red=FW, green=nleaf blue=water).pdf")
+mqmplot.multitrait(mqm_all, chr=4, type="lines")
+dev.off()
+
+```
+```{r}
+# scaning each chromosome
+mqm_auto.1 <- mqmscan(fill, autocofactors,
+pheno.col= 1,　verbose = TRUE,　n.cluster=7)
+
+mqm_auto.2 <- mqmscan(fill, autocofactors,
+pheno.col= 2,　verbose = TRUE,　n.cluster=7)
+
+mqm_auto.3 <- mqmscan(fill, autocofactors,
+pheno.col= 3,　verbose = TRUE,　n.cluster=7)
+
+```
+output LOD plots
+```{r}
+plot(mqm_auto.1, ylim=range(c(0, 20)))
+plot(mqm_auto.2, ylim=range(c(0, 20)))
+plot(mqm_auto.3, ylim=range(c(0, 20)))
+
+pdf(file="Koz4_Bd21.LOD.pdf")
+plot(mqm_auto.1, ylim=range(c(0, 20)))
+plot(mqm_auto.2, ylim=range(c(0, 20)))
+plot(mqm_auto.3, ylim=range(c(0, 20)))
+dev.off()
+
+pdf(file="Koz4_Bd21.LOD chr=4.pdf")
+plot(mqm_auto.1, chr=4, ylim=range(c(0, 20)))
+plot(mqm_auto.2, chr=4, ylim=range(c(0, 20)))
+plot(mqm_auto.3, chr=4, ylim=range(c(0, 20)))
+dev.off()
+```
+max LOD
+```{r}
+mqmmax.1<-max(mqm_auto.1)
+mqmmax.2<-max(mqm_auto.2)
+mqmmax.3<-max(mqm_auto.3)
+
+mqmmax <- data.frame(mqmmax.1, mqmmax.2, mqmmax.3)
+
+write.csv(mqmmax,  file = "Koz4_Bd21.mqmmax.csv")
+```
+
+linkage map
+```{r}
+#genetic map
+pdf(file="Koz4-3_Bd21.genetic map.pdf")
+plotMap(qtl1)
+dev.off()
+#genetic map
+pdf(file="Koz4_Bd21.genetic map_h.pdf")
+plotMap(qtl1, horizontal=TRUE)
+dev.off()
+save.image()
+```
+
+
+
